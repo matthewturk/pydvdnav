@@ -18,7 +18,7 @@ cdef extern from "dvd_types.h":
         DVD_DOMAIN_VMGM      = 4
         DVD_DOMAIN_VTSMenu   = 8
 
-    struct dvdnav_highlight_area_t:
+    ctypedef struct dvdnav_highlight_area_t:
         uint32_t palette
         uint16_t sx
         uint16_t sy

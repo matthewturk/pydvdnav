@@ -1,9 +1,20 @@
-from libc.stdint cimport uint8_t, uint16_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, \
+    int8_t, int16_t, int32_t, int64_t
+
+from .dvd_types cimport dvdnav_highlight_area_t, DVDMenuID_t
 
 cdef extern from "dvdnav.h":
-    typedef struct dvdnav_t
-    typedef int32_t dvdnav_status_t
-    typedef dvd_reader_stream_cb
+    ctypedef void* dvdnav_t
+    ctypedef int32_t dvdnav_status_t
+    ctypedef void* dvdnav_stream_cb
+    ctypedef void* vm_cmd_t
+
+    # Some opaque types we will not need to modify:
+    ctypedef void* pci_t
+    ctypedef void* dsi_t
+    ctypedef void* user_ops_t
+    ctypedef void* audio_attr_t
+    ctypedef void* subp_attr_t
 
     enum:
         DVDNAV_STATUS_ERR
@@ -15,7 +26,7 @@ cdef extern from "dvdnav.h":
         DVDNAV_LOGGER_LEVEL_WARN
         DVDNAV_LOGGER_LEVEL_DEBUG
 
-    typedef struct dvdnav_logger_cb:
+    ctypedef struct dvdnav_logger_cb:
         void (*pf_log) (void *, dvdnav_logger_level_t, char *, va_list)
 
     dvdnav_status_t dvdnav_open(dvdnav_t **dest, const char *path)
@@ -35,7 +46,7 @@ cdef extern from "dvdnav.h":
     dvdnav_status_t dvdnav_reset(dvdnav_t *self)
     dvdnav_status_t dvdnav_path(dvdnav_t *self, const char **path)
     const char* dvdnav_err_to_string(dvdnav_t *self)
-    const char* dvdnav_version(void)
+    const char* dvdnav_version()
 
     # Changing and reading DVD player characteristics
     dvdnav_status_t dvdnav_set_region_mask(dvdnav_t *self, int32_t region_mask)
