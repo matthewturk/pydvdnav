@@ -52,5 +52,6 @@ setup(
     version='0.1.0',
     zip_safe=False,
     ext_modules=cythonize("pydvdnav/*.pyx"),
-    include_dirs=[],
+    include_dirs=["/usr/include/dvdnav", "/usr/include/dvdread"],
+    library_dirs=["/usr/lib/x86_64-linux-gnu/"],
 )

@@ -2,6 +2,7 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, \
     int8_t, int16_t, int32_t, int64_t
 
 from .dvd_types cimport dvdnav_highlight_area_t, DVDMenuID_t
+from .nav_types cimport pci_t, btni_t
 
 cdef extern from "dvdnav.h":
     ctypedef void* dvdnav_t
@@ -10,7 +11,6 @@ cdef extern from "dvdnav.h":
     ctypedef void* vm_cmd_t
 
     # Some opaque types we will not need to modify:
-    ctypedef void* pci_t
     ctypedef void* dsi_t
     ctypedef void* user_ops_t
     ctypedef void* audio_attr_t
