@@ -2,7 +2,8 @@
 
 """The setup script."""
 
-from setuptools import setup, find_packages
+from setuptools import Extension, find_packages, setup  # NOQA
+from Cython.Build import cythonize
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -50,4 +51,6 @@ setup(
     url='https://github.com/matthewturk/pydvdnav',
     version='0.1.0',
     zip_safe=False,
+    ext_modules=cythonize("pydvdnav/*.pyx"),
+    include_dirs=[],
 )
