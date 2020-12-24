@@ -29,6 +29,7 @@ cdef class DVDStream:
         self.outstream = NULL
 
     def set_outstream(self, filename, clobber = True):
+        print("Setting outstream to ", filename)
         if self.outstream != NULL:
             fclose(self.outstream)
         if clobber:
@@ -77,9 +78,7 @@ cdef class DVDStream:
             elif event == DVDNAV_AUDIO_STREAM_CHANGE:
                 yield DVDStreamEvent("Audio Stream Change", self)
             elif event == DVDNAV_HIGHLIGHT:
-                yield DVDStreamEvent("Highlight", self)
-                highlight_event = <dvdnav_highlight_event_t *> self.buf
-                print("Selected button %d" % highlight_event.buttonN)
+                yield DVDStreamEventHighlight("Highlight", self)
             elif event == DVDNAV_VTS_CHANGE:
                 yield DVDStreamEvent("VTS Change", self)
             elif event == DVDNAV_CELL_CHANGE:
@@ -90,14 +89,10 @@ cdef class DVDStream:
                 yield DVDStreamEvent("Cell Change", self)
 
             elif event == DVDNAV_NAV_PACKET:
-                pci = dvdnav_get_current_nav_pci(self.dvdnav)
-                if pci.hli.hl_gi.btn_ns > 0:
-                    print("Found %s DVD menu buttons..." % pci.hli.hl_gi.btn_ns)
-                    for button in range(pci.hli.hl_gi.btn_ns):
-                        btni = &(pci.hli.btnit[button])
-                        print("Button %d top-left @ (%d, %d), bottom-right @ (%d, %d)" % (
-                            button + 1, btni.x_start, btni.y_start, btni.x_end, btni.y_end))
-                    finished = 1
+                ty = DVDStreamEventNavigation("Navigation", self)
+                yield ty
+                #if len(ty.button_info) > 0:
+                #    finished = 1
             elif event == DVDNAV_HOP_CHANNEL:
                 yield DVDStreamEvent("Hop Channel", self)
 
@@ -113,6 +108,10 @@ cdef class DVDStream:
         if dvdnav_close(self.dvdnav) != DVDNAV_STATUS_OK:
             print("Error on dvdnav_close: %s" % dvdnav_err_to_string(self.dvdnav))
 
+    def __dealloc__(self):
+        if self.outstream != NULL:
+            fclose(self.outstream)
+
 cdef class DVDStreamEvent:
     def __cinit__(self, event_type, DVDStream stream):
         self.event_type = event_type
@@ -127,3 +126,30 @@ cdef class DVDStreamEvent:
 
     def __repr__(self):
         return "DVDStreamEvent: % 30s at Title: % 3i Chaper: % 3i - Pos % 8i / % 8i" % (self.event_type, self.title, self.chapter, self.position, self.length)
+
+cdef class DVDStreamEventHighlight(DVDStreamEvent):
+    def __cinit__(self, event_type, DVDStream stream):
+        # The position etc stuff is set
+        cdef dvdnav_highlight_event_t *highlight_event
+        highlight_event = <dvdnav_highlight_event_t *> stream.buf
+        self.display = highlight_event.display
+        self.palette = highlight_event.palette
+        self.sx = highlight_event.sx
+        self.sy = highlight_event.sy
+        self.ex = highlight_event.ex
+        self.ey = highlight_event.ey
+        self.pts = highlight_event.pts
+        self.buttonN = highlight_event.buttonN
+
+cdef class DVDStreamEventNavigation(DVDStreamEvent):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef btni_t *btni = NULL
+        self.pci = dvdnav_get_current_nav_pci(stream.dvdnav)
+        self.button_info = {}
+        if self.pci.hli.hl_gi.btn_ns > 0:
+            for button in range(self.pci.hli.hl_gi.btn_ns):
+                btni = &(self.pci.hli.btnit[button])
+                self.button_info[button + 1] = (btni.x_start, btni.y_start, btni.x_end, btni.y_end, btni.auto_action_mode)
+
+    def select_button(self, DVDStream stream, int button_id):
+        dvdnav_button_select_and_activate(stream.dvdnav, self.pci, button_id)

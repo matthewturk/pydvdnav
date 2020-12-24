@@ -18,5 +18,13 @@ cdef class DVDStreamEvent:
     cdef public uint32_t title
     cdef public uint32_t chapter
 
-cdef class ButtonLocations:
-    pass
+cdef class DVDStreamEventHighlight(DVDStreamEvent):
+    cdef public int display
+    cdef public uint32_t palette
+    cdef public uint16_t sx, sy, ex, ey
+    cdef public uint32_t pts
+    cdef public uint32_t buttonN
+
+cdef class DVDStreamEventNavigation(DVDStreamEvent):
+    cdef pci_t *pci
+    cdef public dict button_info
