@@ -17,6 +17,9 @@ cdef extern from "dvdnav.h":
     ctypedef void* subp_attr_t
 
     enum:
+        DVD_VIDEO_LB_LEN
+
+    enum:
         DVDNAV_STATUS_ERR
         DVDNAV_STATUS_OK
 

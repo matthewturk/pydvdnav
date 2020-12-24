@@ -5,13 +5,18 @@ from .dvd_types cimport *
 from .dvdnav_events cimport *
 from .dvdnav cimport *
 
-DEF DVD_READ_CACHE = 0
+from libc.stdio cimport FILE, fopen, fwrite, fclose
+
+DEF DVD_READ_CACHE = 1
 DEF DVD_LANGUAGE = b"en"
 
+import numpy as np
 
-def walkit():
+
+def walkit(device_name = "/dev/dvd"):
     cdef dvdnav_t *dvdnav
-    if dvdnav_open(&dvdnav, "/dev/dvd") != DVDNAV_STATUS_OK:
+    cdef FILE *output = NULL
+    if dvdnav_open(&dvdnav, device_name.encode()) != DVDNAV_STATUS_OK:
         print("Error on dvdnav_open!")
         return 1
 
@@ -31,7 +36,7 @@ def walkit():
 
     cdef int finished = 0
     cdef int32_t result, event, length
-    cdef uint8_t mem[2048]
+    cdef uint8_t mem[DVD_VIDEO_LB_LEN]
     cdef uint8_t *buf = mem
     cdef int32_t tt = 0, ptt = 0
     cdef uint32_t pos, length2
@@ -40,6 +45,8 @@ def walkit():
     cdef pci_t *pci
     cdef int button
     cdef btni_t *btni
+    cdef int dump = 0, tt_dump = 0
+
 
     print("Reading ...")
 
@@ -49,13 +56,16 @@ def walkit():
         else:
             result = dvdnav_get_next_block(dvdnav, buf, &event, &length)
 
-        print("RECEIVED RESULT", result, event)
         if result == DVDNAV_STATUS_ERR:
             print("Error getting next block: %s" % dvdnav_err_to_string(dvdnav))
             return 3
 
         if event == DVDNAV_BLOCK_OK:
-            print("DVDNAV_BLOCK_OK: %s" % length)
+            if output == NULL:
+                output = fopen("output.mpg", 'w')
+            if dump == 1 or tt_dump == 1:
+                print("Writing", length)
+                fwrite(buf, sizeof(uint8_t), length, output)
 
         elif event == DVDNAV_NOP:
             print("DVDNAV_NOP")
@@ -89,10 +99,22 @@ def walkit():
             dvdnav_current_title_info(dvdnav, &tt, &ptt)
             dvdnav_get_position(dvdnav, &pos, &length2)
             print("Cell change: Title %d, Chapter %d" % (tt, ptt))
-            print("At position %.0f%% inside the feature" % (pos / length2))
+            print("At position %s of %s inside the feature" % (pos, length2))
+            dump = 0
+            if (tt_dump and tt != tt_dump):
+                tt_dump = 0
+            if dump == 0 and tt_dump == 0:
+                response = 'X'
+                while response not in 'astq':
+                    response = input("(a)ppend cell to output\n(s)kip cell\nappend until end of (t)itle\n(q)uit")
+                if response == 'a':
+                    dump = 1
+                elif response == 't':
+                    tt_dump = tt
+                elif response == 'q':
+                    finished = 1
 
         elif event == DVDNAV_NAV_PACKET:
-            print("Getting the pci")
             pci = dvdnav_get_current_nav_pci(dvdnav)
             if pci.hli.hl_gi.btn_ns > 0:
                 print("Found %s DVD menu buttons..." % pci.hli.hl_gi.btn_ns)
@@ -100,6 +122,7 @@ def walkit():
                     btni = &(pci.hli.btnit[button])
                     print("Button %d top-left @ (%d, %d), bottom-right @ (%d, %d)" % (
                         button + 1, btni.x_start, btni.y_start, btni.x_end, btni.y_end))
+                finished = 1
         elif event == DVDNAV_HOP_CHANNEL:
             print("DVDNAV_HOP_CHANNEL")
 
@@ -110,6 +133,8 @@ def walkit():
             print("UNKNOWN EVENT", event)
             finished = 1
 
+    if output != NULL:
+        fclose(output)
     if DVD_READ_CACHE:
         dvdnav_free_cache_block(dvdnav, buf)
     if dvdnav_close(dvdnav) != DVDNAV_STATUS_OK:
