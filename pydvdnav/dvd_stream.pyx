@@ -58,9 +58,9 @@ cdef class DVDStream:
                 if self.outstream != NULL:
                     fwrite(self.buf, sizeof(uint8_t), length, self.outstream)
             elif event == DVDNAV_NOP:
-                yield DVDStreamEvent("No-Op", self)
+                yield Event("No-Op", self)
             elif event == DVDNAV_STILL_FRAME:
-                yield DVDStreamEvent("Still Frame", self)
+                yield Event("Still Frame", self)
                 still_event = <dvdnav_still_event_t*> self.buf
                 if still_event.length < 0xff:
                     print("Skipping %d seconds of still frame" % still_event.length)
@@ -68,40 +68,40 @@ cdef class DVDStream:
                     print("Skipping indefinite length still frame")
                 dvdnav_still_skip(self.dvdnav)
             elif event == DVDNAV_WAIT:
-                yield DVDStreamEvent("Wait", self)
+                yield Event("Wait", self)
                 print("Skipping wait condition")
                 dvdnav_wait_skip(self.dvdnav)
             elif event == DVDNAV_SPU_CLUT_CHANGE:
-                yield DVDStreamEvent("SPU CLUT Change", self)
+                yield Event("SPU CLUT Change", self)
             elif event == DVDNAV_SPU_STREAM_CHANGE:
-                yield DVDStreamEvent("SPU Stream Change", self)
+                yield SPUStreamChangeEvent("SPU Stream Change", self)
             elif event == DVDNAV_AUDIO_STREAM_CHANGE:
-                yield DVDStreamEvent("Audio Stream Change", self)
+                yield AudioStreamChangeEvent("Audio Stream Change", self)
             elif event == DVDNAV_HIGHLIGHT:
-                yield DVDStreamEventHighlight("Highlight", self)
+                yield HighlightEvent("Highlight", self)
             elif event == DVDNAV_VTS_CHANGE:
-                yield DVDStreamEvent("VTS Change", self)
+                yield VTSChangeEvent("VTS Change", self)
             elif event == DVDNAV_CELL_CHANGE:
                 dvdnav_current_title_info(self.dvdnav, &tt, &ptt)
                 dvdnav_get_position(self.dvdnav, &pos, &length2)
                 print("Cell change: Title %d, Chapter %d" % (tt, ptt))
                 print("At position %s of %s inside the feature" % (pos, length2))
-                yield DVDStreamEvent("Cell Change", self)
+                yield CellChangeEvent("Cell Change", self)
 
             elif event == DVDNAV_NAV_PACKET:
-                ty = DVDStreamEventNavigation("Navigation", self)
+                ty = NavigationEvent("Navigation", self)
                 yield ty
                 #if len(ty.button_info) > 0:
                 #    finished = 1
             elif event == DVDNAV_HOP_CHANNEL:
-                yield DVDStreamEvent("Hop Channel", self)
+                yield Event("Hop Channel", self)
 
             elif event == DVDNAV_STOP:
-                yield DVDStreamEvent("Stop", self)
+                yield Event("Stop", self)
                 finished = 1
 
             else:
-                yield DVDStreamEvent("Unknown", self)
+                yield Event("Unknown", self)
                 finished = 1
         if self.cache:
             dvdnav_free_cache_block(self.dvdnav, self.buf)
@@ -112,7 +112,7 @@ cdef class DVDStream:
         if self.outstream != NULL:
             fclose(self.outstream)
 
-cdef class DVDStreamEvent:
+cdef class Event:
     def __cinit__(self, event_type, DVDStream stream):
         self.event_type = event_type
         cdef uint32_t pos, length
@@ -125,9 +125,66 @@ cdef class DVDStreamEvent:
         self.chapter = ptt
 
     def __repr__(self):
-        return "DVDStreamEvent: % 30s at Title: % 3i Chaper: % 3i - Pos % 8i / % 8i" % (self.event_type, self.title, self.chapter, self.position, self.length)
+        return "Event: % 30s at Title: % 3i Chaper: % 3i - Pos % 8i / % 8i" % (self.event_type, self.title, self.chapter, self.position, self.length)
 
-cdef class DVDStreamEventHighlight(DVDStreamEvent):
+cdef class NavigationEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef btni_t *btni = NULL
+        self.pci = dvdnav_get_current_nav_pci(stream.dvdnav)
+        self.button_info = {}
+        if self.pci.hli.hl_gi.btn_ns > 0:
+            for button in range(self.pci.hli.hl_gi.btn_ns):
+                btni = &(self.pci.hli.btnit[button])
+                self.button_info[button + 1] = (btni.x_start, btni.y_start, btni.x_end, btni.y_end, btni.auto_action_mode)
+
+    def select_button(self, DVDStream stream, int button_id):
+        dvdnav_button_select_and_activate(stream.dvdnav, self.pci, button_id)
+
+cdef class StillEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        self.still_length = (<dvdnav_still_event_t*> stream.buf).length
+
+cdef class SPUStreamChangeEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef dvdnav_spu_stream_change_event_t *change_event
+        change_event = <dvdnav_spu_stream_change_event_t*> stream.buf
+        self.physical_wide = change_event.physical_wide
+        self.physical_letterbox = change_event.physical_letterbox
+        self.physical_pan_scan = change_event.physical_pan_scan
+        self.logical = change_event.logical
+
+cdef class AudioStreamChangeEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef dvdnav_audio_stream_change_event_t *change_event
+        change_event = <dvdnav_audio_stream_change_event_t *> stream.buf
+        self.physical = change_event.physical
+        self.logical = change_event.logical
+
+cdef class VTSChangeEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        # The size of the enums is causing some annoyance and I don't need it
+        # right now, so commenting.
+        #cdef dvdnav_vts_change_event_t *change_event
+        #change_event = <dvdnav_vts_change_event_t *> stream.buf
+        #self.old_vtsN = change_event.old_vtsN
+        #self.old_domain = change_event.old_domain
+        #self.new_vtsN = change_event.new_vtsN
+        #self.new_domain = change_event.new_domain
+        pass
+
+cdef class CellChangeEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef dvdnav_cell_change_event_t *change_event
+        change_event = <dvdnav_cell_change_event_t*> stream.buf
+        self.cellN = change_event.cellN
+        self.pgN = change_event.pgN
+        self.cell_length = change_event.cell_length
+        self.pg_length = change_event.pg_length
+        self.pgc_length = change_event.pgc_length
+        self.cell_start = change_event.cell_start
+        self.pg_start = change_event.pg_start
+
+cdef class HighlightEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
         # The position etc stuff is set
         cdef dvdnav_highlight_event_t *highlight_event
@@ -141,15 +198,3 @@ cdef class DVDStreamEventHighlight(DVDStreamEvent):
         self.pts = highlight_event.pts
         self.buttonN = highlight_event.buttonN
 
-cdef class DVDStreamEventNavigation(DVDStreamEvent):
-    def __cinit__(self, event_type, DVDStream stream):
-        cdef btni_t *btni = NULL
-        self.pci = dvdnav_get_current_nav_pci(stream.dvdnav)
-        self.button_info = {}
-        if self.pci.hli.hl_gi.btn_ns > 0:
-            for button in range(self.pci.hli.hl_gi.btn_ns):
-                btni = &(self.pci.hli.btnit[button])
-                self.button_info[button + 1] = (btni.x_start, btni.y_start, btni.x_end, btni.y_end, btni.auto_action_mode)
-
-    def select_button(self, DVDStream stream, int button_id):
-        dvdnav_button_select_and_activate(stream.dvdnav, self.pci, button_id)
