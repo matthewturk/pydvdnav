@@ -2,6 +2,7 @@
 # distutils: libraries = dvdnav
 
 from libc.stdint cimport uint8_t, int32_t, uint32_t
+from libc.stdlib cimport free
 from .dvd_types cimport *
 from .dvdnav_events cimport *
 from .dvdnav cimport *
@@ -107,6 +108,44 @@ cdef class DVDStream:
             dvdnav_free_cache_block(self.dvdnav, self.buf)
         if dvdnav_close(self.dvdnav) != DVDNAV_STATUS_OK:
             print("Error on dvdnav_close: %s" % dvdnav_err_to_string(self.dvdnav))
+
+    @property
+    def table_of_contents(self):
+        cdef int32_t titles, parts
+        cdef uint32_t chapters
+        cdef uint64_t *times
+        cdef uint64_t duration
+        cdef dvdnav_status_t status = dvdnav_get_number_of_titles(self.dvdnav, &titles)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error getting number of titles: %s" % (dvdnav_err_to_string(self.dvdnav)))
+        toc = {}
+        for i in range(1, titles + 1):
+            status = dvdnav_get_number_of_parts(self.dvdnav, i, &parts)
+            if status != DVDNAV_STATUS_OK:
+                raise RuntimeError("Error getting number of parts for title %s: %s" % (
+                    i, dvdnav_err_to_string(self.dvdnav)))
+            chapters = dvdnav_describe_title_chapters(self.dvdnav, i, &times, &duration)
+            this_times = []
+            # durations are reported in PTS ticks, so to get to seconds, divide by 90000
+            for j in range(chapters):
+                this_times.append(times[j] / 90000.0)
+            toc[i] = (parts, duration / 90000.0, this_times)
+            free(times)
+        return toc
+
+    @property
+    def current_title_info(self):
+        #dvdnav_status_t dvdnav_current_title_info(dvdnav_t *self, int32_t *title, int32_t *part);
+        pass
+
+    @property
+    def current_title_program(self):
+        #dvdnav_status_t dvdnav_current_title_program(dvdnav_t *self, int32_t *title, int32_t *pgcn, int32_t *pgn);
+        pass
+
+    @property
+    def current_time(self):
+        return dvdnav_get_current_time(self.dvdnav) / 90000.0
 
     def __dealloc__(self):
         if self.outstream != NULL:
