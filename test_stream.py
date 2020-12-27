@@ -1,28 +1,35 @@
 from collections import Counter
 from pydvdnav.dvd_stream import DVDStream
+import numpy as np
 
-ds = DVDStream("example.iso", cache=True)
+ds = DVDStream("example.iso", cache=False)
 
 count = Counter()
 ncount = 0
 
-for event in ds:
-    if event.event_type == "NAV_PACKET" and len(event.button_info) == 0:
-        pass
+# Let's try to implement some reads!
+event_types = Counter()
+
+nav_info = []
+
+highlights = []
+
+ds.current_title = 1
+ds.menu_call(0)
+e = None
+while getattr(e, 'event_type', None) != "BLOCK_OK":
+    e = ds.read()
+    event_types[e.event_type] += 1
+
+buffer = []
+while e.event_type in ("BLOCK_OK", "NAV_PACKET"):
+    if e.event_type == "BLOCK_OK":
+        buffer.append(e.buffer)
     else:
-        print(event)
-    if event.event_type == "CELL_CHANGE":
-        ds.set_outstream("hello_%03i_%03i_%03i.mpg" % (event.title,
-                                                       event.chapter,
-                                                       count[event.title,
-                                                             event.chapter]),
-                         clobber=True)
-        count[event.title, event.chapter] += 1
-    elif event.event_type == "HIGHLIGHT":
-        print(event.display, event.palette, event.sx, event.sy, event.ex, event.ey, event.pts, event.buttonN)
-    elif event.event_type == "NAV_PACKET" and len(event.button_info) > 0:
-        if ncount == 100:
-            event.select_button(ds, 2)
-            ncount = 0
-        else:
-            ncount += 1
+        print(e, ds.last_length)
+        nav_info.append(len(e.button_info))
+    e = ds.read()
+    event_types[e.event_type] += 1
+
+buffer = np.concatenate(buffer)
+open("out.mpg", "wb").write(buffer)

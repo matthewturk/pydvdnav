@@ -84,6 +84,13 @@ cdef class DVDStream:
             return Event("UNKNOWN", self)
             # This will not allow continuing
 
+    def reset(self):
+        cdef dvdnav_status_t status
+        status = dvdnav_reset(self.dvdnav)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error reseting status: %s" %
+                               dvdnav_err_to_string(self.dvdnav))
+
     def __iter__(self):
         cdef int finished = 0
         cdef int32_t result, event, length, tt = 0, ptt = 0
