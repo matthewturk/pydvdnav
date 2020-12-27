@@ -3,7 +3,7 @@
 from libc.stdint cimport uint16_t, uint32_t
 
 cdef extern from "dvd_types.h":
-    enum DVDMenuID_t:
+    ctypedef enum DVDMenuID_t:
         DVD_MENU_Escape     = 0
         DVD_MENU_Title      = 2
         DVD_MENU_Root       = 3
@@ -12,7 +12,7 @@ cdef extern from "dvd_types.h":
         DVD_MENU_Angle      = 6
         DVD_MENU_Part       = 7
 
-    enum DVDDomain_t:
+    ctypedef enum DVDDomain_t:
         DVD_DOMAIN_FirstPlay = 1
         DVD_DOMAIN_VTSTitle  = 2
         DVD_DOMAIN_VMGM      = 4
@@ -27,7 +27,7 @@ cdef extern from "dvd_types.h":
         uint32_t pts
         uint32_t buttonN
 
-    enum DVDAudioFormat_t:
+    ctypedef enum DVDAudioFormat_t:
         DVD_AUDIO_FORMAT_AC3        = 0
         DVD_AUDIO_FORMAT_UNKNOWN_1  = 1
         DVD_AUDIO_FORMAT_MPEG       = 2

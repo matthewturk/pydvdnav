@@ -3,6 +3,7 @@ from libc.stdint cimport uint8_t
 from .dvd_types cimport *
 from .dvdnav_events cimport *
 from .dvdnav cimport *
+cimport numpy as np
 
 cdef class DVDStream:
     cdef dvdnav_t *dvdnav
@@ -10,6 +11,9 @@ cdef class DVDStream:
     cdef uint8_t *buf
     cdef FILE *outstream
     cdef int cache
+    cdef public int32_t last_result
+    cdef public int32_t last_event
+    cdef public int32_t last_length
 
 cdef class Event:
     cdef public object event_type
@@ -17,6 +21,10 @@ cdef class Event:
     cdef public uint32_t length
     cdef public uint32_t title
     cdef public uint32_t chapter
+    cdef dvdnav_t *dvdnav
+
+cdef class BlockReadEvent(Event):
+    cdef public np.ndarray buffer
 
 cdef class NavigationEvent(Event):
     cdef pci_t *pci
@@ -24,6 +32,9 @@ cdef class NavigationEvent(Event):
 
 cdef class StillEvent(Event):
     cdef public int still_length
+
+cdef class WaitEvent(Event):
+    pass
 
 cdef class SPUStreamChangeEvent(Event):
     cdef public int physical_wide

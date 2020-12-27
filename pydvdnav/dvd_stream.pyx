@@ -6,6 +6,8 @@ from libc.stdlib cimport free
 from .dvd_types cimport *
 from .dvdnav_events cimport *
 from .dvdnav cimport *
+import numpy as np
+cimport numpy as np
 
 cdef class DVDStream:
     def __cinit__(self, device_name = "/dev/dvd", cache = True, language = "en"):
@@ -17,7 +19,6 @@ cdef class DVDStream:
             raise RuntimeError("Error on dvdnav_set_readahead_flag (%s)" % cache)
         self.cache = int(cache)
         self.buf = self.last_block
-
 
         if dvdnav_menu_language_select(self.dvdnav, language.encode()) != DVDNAV_STATUS_OK or \
            dvdnav_audio_language_select(self.dvdnav, language.encode()) != DVDNAV_STATUS_OK or \
@@ -38,6 +39,51 @@ cdef class DVDStream:
         else:
             self.outstream = fopen(filename.encode(), "a")
 
+    def read(self):
+        cdef int32_t result, event, length
+        if self.cache:
+            result = dvdnav_get_next_cache_block(self.dvdnav, &self.buf, &event, &length)
+        else:
+            result = dvdnav_get_next_block(self.dvdnav, self.buf, &event, &length)
+        self.last_result = result
+        self.last_event = event
+        self.last_length = length
+        if result == DVDNAV_STATUS_ERR:
+            raise RuntimeError("Error getting next block: %s" %
+                               dvdnav_err_to_string(self.dvdnav))
+        if event == DVDNAV_BLOCK_OK:
+            if self.outstream != NULL:
+                fwrite(self.buf, sizeof(uint8_t), length, self.outstream)
+            return BlockReadEvent("BLOCK_OK", self)
+        elif event == DVDNAV_NOP:
+            return Event("NOP", self)
+        elif event == DVDNAV_STILL_FRAME:
+            return StillEvent("STILL_FRAME", self)
+        elif event == DVDNAV_WAIT:
+            return WaitEvent("WAIT", self)
+        elif event == DVDNAV_SPU_CLUT_CHANGE:
+            return Event("SPU_CLUT_CHANGE", self)
+        elif event == DVDNAV_SPU_STREAM_CHANGE:
+            return SPUStreamChangeEvent("SPU_STREAM_CHANGE", self)
+        elif event == DVDNAV_AUDIO_STREAM_CHANGE:
+            return AudioStreamChangeEvent("AUDIO_STREAM_CHANGE", self)
+        elif event == DVDNAV_HIGHLIGHT:
+            return HighlightEvent("HIGHLIGHT", self)
+        elif event == DVDNAV_VTS_CHANGE:
+            return VTSChangeEvent("VTS_CHANGE", self)
+        elif event == DVDNAV_CELL_CHANGE:
+            return CellChangeEvent("CELL_CHANGE", self)
+        elif event == DVDNAV_NAV_PACKET:
+            return NavigationEvent("NAV_PACKET", self)
+        elif event == DVDNAV_HOP_CHANNEL:
+            return Event("HOP_CHANNEL", self)
+        elif event == DVDNAV_STOP:
+            return Event("STOP", self)
+            # This won't let you continue
+        else:
+            return Event("UNKNOWN", self)
+            # This will not allow continuing
+
     def __iter__(self):
         cdef int finished = 0
         cdef int32_t result, event, length, tt = 0, ptt = 0
@@ -52,12 +98,16 @@ cdef class DVDStream:
                 result = dvdnav_get_next_cache_block(self.dvdnav, &self.buf, &event, &length)
             else:
                 result = dvdnav_get_next_block(self.dvdnav, self.buf, &event, &length)
+            self.last_result = result
+            self.last_event = event
+            self.last_length = length
             if result == DVDNAV_STATUS_ERR:
                 raise RuntimeError("Error getting next block: %s" %
                                    dvdnav_err_to_string(self.dvdnav))
             if event == DVDNAV_BLOCK_OK:
                 if self.outstream != NULL:
                     fwrite(self.buf, sizeof(uint8_t), length, self.outstream)
+                yield BlockReadEvent("BLOCK_OK", self)
             elif event == DVDNAV_NOP:
                 yield Event("NOP", self)
             elif event == DVDNAV_STILL_FRAME:
@@ -134,18 +184,82 @@ cdef class DVDStream:
         return toc
 
     @property
+    def current_title(self):
+        cdef dvdnav_status_t status
+        cdef int32_t title, part
+        status = dvdnav_current_title_info(self.dvdnav, &title, &part)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error getting title info: %s" % (
+                    dvdnav_err_to_string(self.dvdnav)))
+        return title
+
+    @current_title.setter
+    def current_title(self, value):
+        cdef dvdnav_status_t status
+        cdef int32_t title = value
+        status = dvdnav_title_play(self.dvdnav, title)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error setting title to %s: %s" % (
+                    title, dvdnav_err_to_string(self.dvdnav)))
+
+    @property
     def current_title_info(self):
         #dvdnav_status_t dvdnav_current_title_info(dvdnav_t *self, int32_t *title, int32_t *part);
-        pass
+        cdef dvdnav_status_t status
+        cdef int32_t title, part
+        status = dvdnav_current_title_info(self.dvdnav, &title, &part)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error getting title info: %s" % (
+                    dvdnav_err_to_string(self.dvdnav)))
+        return title, part
+
+    @current_title_info.setter
+    def current_title_info(self, value):
+        cdef dvdnav_status_t status
+        cdef int32_t title, part
+        title = value[0]
+        part = value[1]
+        status = dvdnav_part_play(self.dvdnav, title, part)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error setting title to %s and part to %s: %s" % (
+                    title, part, dvdnav_err_to_string(self.dvdnav)))
 
     @property
     def current_title_program(self):
-        #dvdnav_status_t dvdnav_current_title_program(dvdnav_t *self, int32_t *title, int32_t *pgcn, int32_t *pgn);
-        pass
+        cdef dvdnav_status_t status
+        cdef int32_t title, pgc, pgn
+        status = dvdnav_current_title_program(self.dvdnav, &title, &pgc, &pgn)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error getting title program: %s" % (
+                    dvdnav_err_to_string(self.dvdnav)))
+        return title, pgc, pgn
+
+    @current_title_program.setter
+    def current_title_program(self, value):
+        cdef dvdnav_status_t status
+        cdef int32_t title, pgcn, pgn
+        title = value[0]
+        pgcn = value[1]
+        pgn = value[2]
+        status = dvdnav_program_play(self.dvdnav, title, pgcn, pgn)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error setting title program to (%s, %s, %s): %s" % (
+                    title, pgcn, pgn, dvdnav_err_to_string(self.dvdnav)))
 
     @property
     def current_time(self):
         return dvdnav_get_current_time(self.dvdnav) / 90000.0
+
+    @property
+    def next_still_flag(self):
+        return dvdnav_get_next_still_flag(self.dvdnav)
+
+    def menu_call(self, DVDMenuID_t menu_id):
+        cdef dvdnav_status_t status
+        status = dvdnav_menu_call(self.dvdnav, menu_id)
+        if status != DVDNAV_STATUS_OK:
+            raise RuntimeError("Error calling menu %s: %s" % (
+                menu_id, dvdnav_err_to_string(self.dvdnav)))
 
     def __dealloc__(self):
         if self.outstream != NULL:
@@ -162,9 +276,24 @@ cdef class Event:
         self.length = length
         self.title = tt
         self.chapter = ptt
+        self.dvdnav = stream.dvdnav
 
     def __repr__(self):
         return "Event: % 30s at Title: % 3i Chaper: % 3i - Pos % 8i / % 8i" % (self.event_type, self.title, self.chapter, self.position, self.length)
+
+    def complete(self):
+        return
+
+cdef class BlockReadEvent(Event):
+    def __cinit__(self, event_type, DVDStream stream):
+        cdef np.ndarray[np.uint8_t, ndim=1] buffer
+        self.buffer = buffer = np.empty(stream.last_length, dtype="u1")
+        for i in range(stream.last_length):
+            buffer[i] = stream.buf[i]
+        # This doesn't work, I'm sure there's a better way, I feel silly that I
+        # don't know it, but whatever.
+        #buffer[:] = <np.uint8_t[:]> stream.buf[:stream.last_length]
+
 
 cdef class NavigationEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
@@ -176,12 +305,29 @@ cdef class NavigationEvent(Event):
                 btni = &(self.pci.hli.btnit[button])
                 self.button_info[button + 1] = (btni.x_start, btni.y_start, btni.x_end, btni.y_end, btni.auto_action_mode)
 
-    def select_button(self, DVDStream stream, int button_id):
-        dvdnav_button_select_and_activate(stream.dvdnav, self.pci, button_id)
+    def select_button(self, int button_id):
+        dvdnav_button_select_and_activate(self.dvdnav, self.pci, button_id)
+
+    def complete(self):
+        if len(self.button_info) > 0:
+            self.select_button(1)
 
 cdef class StillEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
         self.still_length = (<dvdnav_still_event_t*> stream.buf).length
+
+    def still_skip(self):
+        dvdnav_still_skip(self.dvdnav)
+
+    def complete(self):
+        self.still_skip()
+
+cdef class WaitEvent(Event):
+    def wait_skip(self):
+        dvdnav_wait_skip(self.dvdnav)
+
+    def complete(self):
+        self.wait_skip()
 
 cdef class SPUStreamChangeEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
@@ -201,15 +347,12 @@ cdef class AudioStreamChangeEvent(Event):
 
 cdef class VTSChangeEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
-        # The size of the enums is causing some annoyance and I don't need it
-        # right now, so commenting.
-        #cdef dvdnav_vts_change_event_t *change_event
-        #change_event = <dvdnav_vts_change_event_t *> stream.buf
-        #self.old_vtsN = change_event.old_vtsN
-        #self.old_domain = change_event.old_domain
-        #self.new_vtsN = change_event.new_vtsN
-        #self.new_domain = change_event.new_domain
-        pass
+        cdef dvdnav_vts_change_event_t *change_event
+        change_event = <dvdnav_vts_change_event_t *> stream.buf
+        self.old_vtsN = change_event.old_vtsN
+        self.old_domain = change_event.old_domain
+        self.new_vtsN = change_event.new_vtsN
+        self.new_domain = change_event.new_domain
 
 cdef class CellChangeEvent(Event):
     def __cinit__(self, event_type, DVDStream stream):
