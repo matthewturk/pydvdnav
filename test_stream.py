@@ -7,20 +7,20 @@ count = Counter()
 ncount = 0
 
 for event in ds:
-    if event.event_type == "Navigation" and len(event.button_info) == 0:
+    if event.event_type == "NAV_PACKET" and len(event.button_info) == 0:
         pass
     else:
         print(event)
-    if event.event_type == "Cell Change":
+    if event.event_type == "CELL_CHANGE":
         ds.set_outstream("hello_%03i_%03i_%03i.mpg" % (event.title,
                                                        event.chapter,
                                                        count[event.title,
                                                              event.chapter]),
                          clobber=True)
         count[event.title, event.chapter] += 1
-    elif event.event_type == "Highlight":
+    elif event.event_type == "HIGHLIGHT":
         print(event.display, event.palette, event.sx, event.sy, event.ex, event.ey, event.pts, event.buttonN)
-    elif event.event_type == "Navigation" and len(event.button_info) > 0:
+    elif event.event_type == "NAV_PACKET" and len(event.button_info) > 0:
         if ncount == 100:
             event.select_button(ds, 2)
             ncount = 0

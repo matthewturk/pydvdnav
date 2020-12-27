@@ -58,9 +58,9 @@ cdef class DVDStream:
                 if self.outstream != NULL:
                     fwrite(self.buf, sizeof(uint8_t), length, self.outstream)
             elif event == DVDNAV_NOP:
-                yield Event("No-Op", self)
+                yield Event("NOP", self)
             elif event == DVDNAV_STILL_FRAME:
-                yield Event("Still Frame", self)
+                yield Event("STILL_FRAME", self)
                 still_event = <dvdnav_still_event_t*> self.buf
                 if still_event.length < 0xff:
                     print("Skipping %d seconds of still frame" % still_event.length)
@@ -68,40 +68,40 @@ cdef class DVDStream:
                     print("Skipping indefinite length still frame")
                 dvdnav_still_skip(self.dvdnav)
             elif event == DVDNAV_WAIT:
-                yield Event("Wait", self)
+                yield Event("WAIT", self)
                 print("Skipping wait condition")
                 dvdnav_wait_skip(self.dvdnav)
             elif event == DVDNAV_SPU_CLUT_CHANGE:
-                yield Event("SPU CLUT Change", self)
+                yield Event("SPU_CLUT_CHANGE", self)
             elif event == DVDNAV_SPU_STREAM_CHANGE:
-                yield SPUStreamChangeEvent("SPU Stream Change", self)
+                yield SPUStreamChangeEvent("SPU_STREAM_CHANGE", self)
             elif event == DVDNAV_AUDIO_STREAM_CHANGE:
-                yield AudioStreamChangeEvent("Audio Stream Change", self)
+                yield AudioStreamChangeEvent("AUDIO_STREAM_CHANGE", self)
             elif event == DVDNAV_HIGHLIGHT:
-                yield HighlightEvent("Highlight", self)
+                yield HighlightEvent("HIGHLIGHT", self)
             elif event == DVDNAV_VTS_CHANGE:
-                yield VTSChangeEvent("VTS Change", self)
+                yield VTSChangeEvent("VTS_CHANGE", self)
             elif event == DVDNAV_CELL_CHANGE:
                 dvdnav_current_title_info(self.dvdnav, &tt, &ptt)
                 dvdnav_get_position(self.dvdnav, &pos, &length2)
                 print("Cell change: Title %d, Chapter %d" % (tt, ptt))
                 print("At position %s of %s inside the feature" % (pos, length2))
-                yield CellChangeEvent("Cell Change", self)
+                yield CellChangeEvent("CELL_CHANGE", self)
 
             elif event == DVDNAV_NAV_PACKET:
-                ty = NavigationEvent("Navigation", self)
+                ty = NavigationEvent("NAV_PACKET", self)
                 yield ty
                 #if len(ty.button_info) > 0:
                 #    finished = 1
             elif event == DVDNAV_HOP_CHANNEL:
-                yield Event("Hop Channel", self)
+                yield Event("HOP_CHANNEL", self)
 
             elif event == DVDNAV_STOP:
-                yield Event("Stop", self)
+                yield Event("STOP", self)
                 finished = 1
 
             else:
-                yield Event("Unknown", self)
+                yield Event("UNKNOWN", self)
                 finished = 1
         if self.cache:
             dvdnav_free_cache_block(self.dvdnav, self.buf)
